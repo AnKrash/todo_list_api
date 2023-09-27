@@ -4,8 +4,10 @@ namespace App\Http\Controllers;
 
 use App\Models\Subtask;
 use App\Models\Task;
+use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Validator;
 
 class TaskController extends Controller
@@ -153,10 +155,16 @@ class TaskController extends Controller
      * @param Request $request
      * @param $id
      * @return JsonResponse
+     * @throws AuthorizationException
      */
     public function update(Request $request, $id): JsonResponse
     {
         $task = Task::findOrFail($id);
+
+        if (!$this->authorize('update', $task)) {
+
+            throw new AuthorizationException('You are not authorized to update this task.');
+        }
         // Validate the request data for updating a Task
         $validator = Validator::make($request->all(), [
             'title' => 'required|string|max:255',
@@ -181,39 +189,38 @@ class TaskController extends Controller
         ]);
 
         // Check if a Subtask is provided in the request
-        if ($request->has('subtask')) {
-            // Get the Subtask data from the request
-            $subtaskData = $request->input('subtask');
-
-            // Check if the Task has an associated Subtask
-            if ($task->subtasks->isNotEmpty()) {
-                // Update the existing Subtask with the provided data
-                $task->subtasks[0]->update([
-                    'title' => $subtaskData['title'],
-                    'description' => $subtaskData['description'],
-                    'status' => $subtaskData['status'],
-                    'priority' => $subtaskData['priority'],
-                    'user_id' => $subtaskData['user_id'],
-                    // Set other Subtask properties here
-                ]);
-            } else {
-                // If no associated Subtask exists, create a new one
-                $subtask = new Subtask([
-                    'title' => $subtaskData['title'],
-                    'description' => $subtaskData['description'],
-                    'status' => $subtaskData['status'],
-                    'priority' => $subtaskData['priority'],
-                    'user_id' => $subtaskData['user_id'],
-                    // Set other Subtask properties here
-                ]);
-
-                // Associate the Subtask with the Task
-                $task->subtasks()->save($subtask);
-            }
-        } elseif ($task->subtasks->isNotEmpty()) {
+        if (!$request->has('subtask')) {
             // If no Subtask data is provided but the Task has an associated Subtask, delete it
             $task->subtasks[0]->delete();
+            // Reload the updated Task and its Subtask (if exists)
+            $task->load('subtasks');
+
+            return new JsonResponse(['task' => $task, 'message' => 'Task updated successfully'], 200);
         }
+
+        // Get the Subtask data from the request
+        $subtaskData = $request->input('subtask');
+
+        $data = [
+            'title' => $subtaskData['title'],
+            'description' => $subtaskData['description'],
+            'status' => $subtaskData['status'],
+            'priority' => $subtaskData['priority'],
+            'user_id' => $subtaskData['user_id'],
+        ];
+
+        // Check if the Task has an associated Subtask
+        if ($task->subtasks->isNotEmpty()) {
+            // Update the existing Subtask with the provided data
+            $task->subtasks[0]->update($data);
+        } else {
+            // If no associated Subtask exists, create a new one
+            $subtask = new Subtask($data);
+
+            // Associate the Subtask with the Task
+            $task->subtasks()->save($subtask);
+        }
+
 
         // Reload the updated Task and its Subtask (if exists)
         $task->load('subtasks');
@@ -251,11 +258,15 @@ class TaskController extends Controller
      * @param Request $request
      * @param $id
      * @return JsonResponse
+     * @throws AuthorizationException
      */
     public function destroy(Request $request, $id): JsonResponse
     {
-
         $task = Task::findOrFail($id);
+        if (!$this->authorize('delete', $task)) {
+            throw new AuthorizationException('You are not authorized to update this task.');
+        }
+
         // Check if the task is completed
         if ($task->status === 'done') {
             return new JsonResponse(['error' => 'Cannot delete a completed task.'], 400);
