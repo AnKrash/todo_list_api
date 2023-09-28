@@ -4,70 +4,47 @@ namespace App\Http\Controllers;
 
 use App\Models\Subtask;
 use App\Models\Task;
+use App\Services\TaskFilterService;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Validator;
+use App\Services\TaskValidationService;
 
 class TaskController extends Controller
 {
+    protected TaskValidationService $taskValidationService;
+    private TaskFilterService $taskFilterService;
+    public function __construct(TaskValidationService $taskValidationService,TaskFilterService $taskFilterService)
+    {
+        $this->taskValidationService = $taskValidationService;
+        $this->taskFilterService = $taskFilterService;
+    }
+
     /**
      * Store a newly created resource in storage.
      *
      * @param Request $request
      * @return JsonResponse
      */
+
     public function index(Request $request): JsonResponse
     {
         $query = Task::with('subtasks');
 
-        // Filter by status
-        if ($request->has('status') && $request->input('status') !== 'all') {
-            $query->where('status', $request->input('status'));
-        }
+        // Get the filters from the request
 
-        // Filter by priority range
-        if ($request->has('priority_from')) {
-            $query->where('priority', '>=', (int)$request->input('priority_from'));
-        }
-        if ($request->has('priority_to')) {
-            $query->where('priority', '<=', (int)$request->input('priority_to'));
-        }
+        $filters = $request->all();
 
-        // Full-text search by title
-        if ($request->has('title')) {
-            $title = $request->input('title');
-            $query->where(function ($q) use ($title) {
-                $q->where('title', 'like', '%' . $title . '%');
-            });
-        }
+        // Use the TaskFilterService to filter tasks
 
-        // Sorting
-        if ($request->has('sort')) {
-            $sortField = $request->input('sort');
-            $sortDirection = $request->input('sort_direction', 'asc');
-            // Handle custom sorting options
-            switch ($sortField) {
-                case 'created_at':
-                case 'completed_at':
-                case 'priority':
-                    $query->orderBy($sortField, $sortDirection);
-                    break;
-                default:
-                    // Handle unknown sort field or fallback to default sorting
-                    $query->orderBy('created_at', 'desc');
-                    break;
-            }
-        } else {
-            // Default sorting if not specified
-            $query->orderBy('created_at', 'desc');
-        }
+        $filteredTasks = $this->taskFilterService->filterTasks($query, $filters);
 
-        $tasks = $query->get();
-
-        return new JsonResponse(['tasks' => $tasks]);
+        return new JsonResponse(['tasks' => $filteredTasks], 200);
     }
+
+
 
     /**
      * Store a newly created resource in storage.
@@ -91,17 +68,12 @@ class TaskController extends Controller
      * @return JsonResponse
      */
 
-    public function store(Request $request): JsonResponse
+    public function store(Request $request,TaskValidationService $taskValidationService): JsonResponse
     {
-        $validator = Validator::make($request->all(), [
-            'title' => 'required|string|max:255',
-            'description' => 'nullable|string',
-            'status' => 'required|in:todo,done',
-            'priority' => 'required|integer|between:1,5',
-            'user_id' => 'required|integer',
-        ]);
 
+        $validator = $taskValidationService->validateTaskDataWithSubtask($request->all());
         if ($validator->fails()) {
+            // Validation failed, return error messages
             return new JsonResponse(['errors' => $validator->errors()], 400);
         }
 
@@ -131,7 +103,6 @@ class TaskController extends Controller
 
                 // Associate the Subtask with the Task
                 $task->subtasks()->save($subtask);
-
                 // Recursively create subtasks if there are nested subtasks
                 if (isset($subtaskData['subtask'])) {
                     createSubtasks($subtask, $subtaskData['subtask']);
@@ -154,26 +125,21 @@ class TaskController extends Controller
      *
      * @param Request $request
      * @param $id
+     * @param TaskValidationService $taskValidationService
      * @return JsonResponse
      * @throws AuthorizationException
      */
-    public function update(Request $request, $id): JsonResponse
+
+
+    public function update(Request $request, $id, TaskValidationService $taskValidationService): JsonResponse
     {
         $task = Task::findOrFail($id);
 
         if (!$this->authorize('update', $task)) {
-
             throw new AuthorizationException('You are not authorized to update this task.');
         }
-        // Validate the request data for updating a Task
-        $validator = Validator::make($request->all(), [
-            'title' => 'required|string|max:255',
-            'description' => 'nullable|string',
-            'status' => 'required|in:todo,done',
-            'priority' => 'required|integer|between:1,5',
-            'user_id' => 'required|integer',
-            // Add other validation rules as needed
-        ]);
+
+        $validator = $taskValidationService->validateTaskDataWithSubtask($request->all());
 
         if ($validator->fails()) {
             return new JsonResponse(['errors' => $validator->errors()], 400);
@@ -188,44 +154,40 @@ class TaskController extends Controller
             'user_id' => $request->input('user_id'),
         ]);
 
-        // Check if a Subtask is provided in the request
-        if (!$request->has('subtask')) {
-            // If no Subtask data is provided but the Task has an associated Subtask, delete it
-            $task->subtasks[0]->delete();
-            // Reload the updated Task and its Subtask (if exists)
-            $task->load('subtasks');
 
-            return new JsonResponse(['task' => $task, 'message' => 'Task updated successfully'], 200);
-        }
 
-        // Get the Subtask data from the request
+// Handle subtasks
         $subtaskData = $request->input('subtask');
 
-        $data = [
-            'title' => $subtaskData['title'],
-            'description' => $subtaskData['description'],
-            'status' => $subtaskData['status'],
-            'priority' => $subtaskData['priority'],
-            'user_id' => $subtaskData['user_id'],
-        ];
+        // Recursively update subtasks
+        $this->updateSubtasks($task, $subtaskData);
 
-        // Check if the Task has an associated Subtask
-        if ($task->subtasks->isNotEmpty()) {
-            // Update the existing Subtask with the provided data
-            $task->subtasks[0]->update($data);
-        } else {
-            // If no associated Subtask exists, create a new one
-            $subtask = new Subtask($data);
-
-            // Associate the Subtask with the Task
-            $task->subtasks()->save($subtask);
-        }
-
-
-        // Reload the updated Task and its Subtask (if exists)
+        // Reload the updated Task and its Subtasks
         $task->load('subtasks');
 
         return new JsonResponse(['task' => $task, 'message' => 'Task updated successfully'], 200);
+    }
+
+    private function updateSubtasks(Task $task, $subtaskData): void
+    {
+        $task->subtasks()->delete(); // Delete existing subtasks
+
+        foreach ($subtaskData as $subtaskDatum) {
+            $subtask = new Subtask([
+                'title' => $subtaskDatum['title'],
+                'description' => $subtaskDatum['description'],
+                'status' => $subtaskDatum['status'],
+                'priority' => $subtaskDatum['priority'],
+                'user_id' => $subtaskDatum['user_id'],
+            ]);
+
+            $task->subtasks()->save($subtask);
+
+            if (isset($subtaskDatum['subtask']) && is_array($subtaskDatum['subtask'])) {
+                // Recursively update nested subtasks
+                $this->updateSubtasks($task, $subtaskDatum['subtask']);
+            }
+        }
     }
 
     /**
