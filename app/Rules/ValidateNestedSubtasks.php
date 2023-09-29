@@ -6,14 +6,15 @@ use Illuminate\Contracts\Validation\Rule;
 
 class ValidateNestedSubtasks implements Rule
 {
+    /**
+     * @param $attribute
+     * @param $value
+     * @return bool
+     */
     public function passes($attribute, $value): bool
     {
-        // Define your validation logic for nested subtasks here.
-        // You can use recursion to validate nested subtasks.
-
-        // For example, if you want to check that each subtask has a 'title' and 'status':
         foreach ($value as $subtask) {
-            if (!isset($subtask['title']) || !isset($subtask['status'])) {
+            if (!isset($subtask['title']) || !isset($subtask['status']) || !isset($subtask['priority']) || !is_int($subtask['priority']) || $subtask['priority'] < 1 || $subtask['priority'] > 5) {
                 return false;
             }
 
@@ -29,7 +30,10 @@ class ValidateNestedSubtasks implements Rule
         return true;
     }
 
-    public function message()
+    /**
+     * @return string
+     */
+    public function message(): string
     {
         return 'Validation of nested subtasks failed.';
     }

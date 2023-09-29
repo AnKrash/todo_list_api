@@ -26,7 +26,7 @@ return new class extends Migration {
 
             $table->foreign('user_id')->references('id')->on('users');
             $table->foreign('task_id')->references('id')->on('tasks');
-            $table->foreign('parent_subtask_id')->references('id')->on('subtasks');
+            $table->foreign('parent_subtask_id')->references('id')->on('subtasks')->onDelete('cascade');
         });
     }
 

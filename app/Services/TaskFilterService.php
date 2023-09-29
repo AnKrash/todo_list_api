@@ -1,13 +1,15 @@
 <?php
-// app/Services/TaskFilterService.php
 
 namespace App\Services;
 
-use App\Models\Task;
-
 class TaskFilterService
 {
-    public function filterTasks($query, $filters)
+    /**
+     * @param $query
+     * @param $filters
+     * @return mixed
+     */
+    public function filterTasks($query, $filters): mixed
     {
         // Filter by status
         if (isset($filters['status']) && $filters['status'] !== 'all') {
@@ -18,6 +20,7 @@ class TaskFilterService
         if (isset($filters['priority_from'])) {
             $query->where('priority', '>=', (int)$filters['priority_from']);
         }
+
         if (isset($filters['priority_to'])) {
             $query->where('priority', '<=', (int)$filters['priority_to']);
         }

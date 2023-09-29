@@ -2,24 +2,25 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\TaskRequest;
 use App\Models\Subtask;
 use App\Models\Task;
+use App\Services\TaskDataService;
 use App\Services\TaskFilterService;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Validator;
-use App\Services\TaskValidationService;
 
 class TaskController extends Controller
 {
-    protected TaskValidationService $taskValidationService;
     private TaskFilterService $taskFilterService;
-    public function __construct(TaskValidationService $taskValidationService,TaskFilterService $taskFilterService)
+
+    protected TaskDataService $taskDataService;
+
+    public function __construct(TaskFilterService $taskFilterService, TaskDataService $taskDataService)
     {
-        $this->taskValidationService = $taskValidationService;
         $this->taskFilterService = $taskFilterService;
+        $this->taskDataService = $taskDataService;
     }
 
     /**
@@ -28,7 +29,6 @@ class TaskController extends Controller
      * @param Request $request
      * @return JsonResponse
      */
-
     public function index(Request $request): JsonResponse
     {
         $query = Task::with('subtasks');
@@ -43,8 +43,6 @@ class TaskController extends Controller
 
         return new JsonResponse(['tasks' => $filteredTasks], 200);
     }
-
-
 
     /**
      * Store a newly created resource in storage.
@@ -62,132 +60,30 @@ class TaskController extends Controller
     }
 
     /**
-     * Store a newly created resource in storage.
-     *
-     * @param Request $request
+     * @param TaskRequest $request
      * @return JsonResponse
      */
-
-    public function store(Request $request,TaskValidationService $taskValidationService): JsonResponse
+    public function store(TaskRequest $request): JsonResponse
     {
+        // Use the TaskDataService to create a new task
+        $task = $this->taskDataService->createTask($request->validated());
 
-        $validator = $taskValidationService->validateTaskDataWithSubtask($request->all());
-        if ($validator->fails()) {
-            // Validation failed, return error messages
-            return new JsonResponse(['errors' => $validator->errors()], 400);
-        }
-
-        // Create a new Task
-        $task = new Task([
-            'title' => $request->input('title'),
-            'description' => $request->input('description'),
-            'status' => $request->input('status'),
-            'priority' => $request->input('priority'),
-            'user_id' => $request->input('user_id'),
-        ]);
-
-        // Save the Task to the database
-        $task->save();
-        // Function to recursively create subtasks
-        function createSubtasks($task, $subtaskData): void
-        {
-            if (isset($subtaskData['title'])) {
-                $subtask = new Subtask([
-                    'title' => $subtaskData['title'],
-                    'description' => $subtaskData['description'],
-                    'status' => $subtaskData['status'],
-                    'priority' => $subtaskData['priority'],
-                    'user_id' => $subtaskData['user_id'],
-                    // Set other Subtask properties here
-                ]);
-
-                // Associate the Subtask with the Task
-                $task->subtasks()->save($subtask);
-                // Recursively create subtasks if there are nested subtasks
-                if (isset($subtaskData['subtask'])) {
-                    createSubtasks($subtask, $subtaskData['subtask']);
-                }
-            }
-        }
-
-        // Check if a Subtask is provided in the request
-        if ($request->has('subtask')) {
-            $subtaskData = $request->input('subtask');
-            createSubtasks($task, $subtaskData);
-        }
-
-        return new JsonResponse(['task' => $task, 'message' => 'Task created successfully'], 201);
-
+        return response()->json(['task' => $task, 'message' => 'Task created successfully'], 201);
     }
 
     /**
-     * Store a newly created resource in storage.
-     *
-     * @param Request $request
+     * @param TaskRequest $request
      * @param $id
-     * @param TaskValidationService $taskValidationService
      * @return JsonResponse
-     * @throws AuthorizationException
      */
-
-
-    public function update(Request $request, $id, TaskValidationService $taskValidationService): JsonResponse
+    public function update(TaskRequest $request, $id): JsonResponse
     {
         $task = Task::findOrFail($id);
 
-        if (!$this->authorize('update', $task)) {
-            throw new AuthorizationException('You are not authorized to update this task.');
-        }
+        // Use the TaskDataService to update the task and its subtasks
+        $task = $this->taskDataService->updateTask($task, $request->validated());
 
-        $validator = $taskValidationService->validateTaskDataWithSubtask($request->all());
-
-        if ($validator->fails()) {
-            return new JsonResponse(['errors' => $validator->errors()], 400);
-        }
-
-        // Update the Task with the provided data
-        $task->update([
-            'title' => $request->input('title'),
-            'description' => $request->input('description'),
-            'status' => $request->input('status'),
-            'priority' => $request->input('priority'),
-            'user_id' => $request->input('user_id'),
-        ]);
-
-
-
-// Handle subtasks
-        $subtaskData = $request->input('subtask');
-
-        // Recursively update subtasks
-        $this->updateSubtasks($task, $subtaskData);
-
-        // Reload the updated Task and its Subtasks
-        $task->load('subtasks');
-
-        return new JsonResponse(['task' => $task, 'message' => 'Task updated successfully'], 200);
-    }
-
-    private function updateSubtasks(Task $task, $subtaskData): void
-    {
-        $task->subtasks()->delete(); // Delete existing subtasks
-
-        foreach ($subtaskData as $subtaskDatum) {
-            $subtask = new Subtask([
-                'title' => $subtaskDatum['title'],
-                'description' => $subtaskDatum['description'],
-                'status' => $subtaskDatum['status'],
-                'priority' => $subtaskDatum['priority'],
-                'user_id' => $subtaskDatum['user_id'],
-            ]);
-
-            $task->subtasks()->save($subtask);
-
-            if (isset($subtaskDatum['subtask']) && is_array($subtaskDatum['subtask'])) {
-                // Recursively update nested subtasks
-                $this->updateSubtasks($task, $subtaskDatum['subtask']);
-            }
-        }
+        return response()->json(['task' => $task, 'message' => 'Task updated successfully'], 200);
     }
 
     /**
@@ -225,32 +121,18 @@ class TaskController extends Controller
     public function destroy(Request $request, $id): JsonResponse
     {
         $task = Task::findOrFail($id);
+
         if (!$this->authorize('delete', $task)) {
-            throw new AuthorizationException('You are not authorized to update this task.');
+            throw new AuthorizationException('You are not authorized to delete this task.');
         }
 
-        // Check if the task is completed
-        if ($task->status === 'done') {
-            return new JsonResponse(['error' => 'Cannot delete a completed task.'], 400);
+        try {
+            // Use the TaskDataService to delete the task and its subtasks
+            $this->taskDataService->deleteTaskAndSubtasks($task);
+
+            return new JsonResponse(['message' => 'Task and all its subtasks deleted successfully'], 200);
+        } catch (\InvalidArgumentException $e) {
+            return new JsonResponse(['error' => $e->getMessage()], 400);
         }
-
-        function deleteTaskAndSubtasks($task): void
-        {
-            // Get all subtasks for the task
-            $subtasks = $task->subtasks;
-
-            // Recursively call deleteTaskAndSubtasks for each subtask
-            foreach ($subtasks as $subtask) {
-                deleteTaskAndSubtasks($subtask);
-            }
-
-            // Delete the current task
-            $task->delete();
-        }
-
-        // Call a recursive function to delete all subtasks and tasks
-        deleteTaskAndSubtasks($task);
-
-        return new JsonResponse(['message' => 'Task and all its subtasks deleted successfully'], 200);
     }
 }

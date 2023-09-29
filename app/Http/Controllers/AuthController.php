@@ -2,13 +2,13 @@
 
 namespace App\Http\Controllers;
 
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use JetBrains\PhpStorm\NoReturn;
 
 class AuthController extends Controller
 {
-    #[NoReturn] public function login(Request $request): \Illuminate\Http\JsonResponse
+     public function login(Request $request): JsonResponse
     {
         // Validate user credentials and log them in (if valid)
         $credentials = $request->only('email', 'password');

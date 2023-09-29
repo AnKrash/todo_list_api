@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Subtask extends Model
 {
@@ -24,11 +25,7 @@ class Subtask extends Model
         return $this->belongsTo(Task::class, 'task_id');
     }
 
-//    public function parentSubtask()
-//    {
-//        return $this->belongsTo(Subtask::class, 'parent_subtask_id');
-//    }
-    public function subtasks()
+    public function subtasks(): HasMany
     {
         return $this->hasMany(Subtask::class, 'parent_subtask_id');
     }
