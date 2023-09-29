@@ -1,41 +1,40 @@
 Todo List API
-This project is an API for managing your to-do list. Each task in the to-do list has the following properties:
 
-status (todo, done)
-priority (1...5)
-title: Task title
-description: Task description
-createdAt: Creation date
-completedAt: Completion date
+This project is an API for managing your to-do list. 
+
+
 Tasks can have subtasks, and there is no limit to the nesting level of subtasks.
 
 The API provides the following functionalities:
 
-Get a list of your tasks based on filtering criteria
-Create a new task
-Edit an existing task
-Delete a task
-Mark a task as completed
+Get a list of your tasks based on filtering criteria,
+Create a new task,
+Edit an existing task,
+Delete a task,
+Mark a task as completed.
+
 When retrieving a list of tasks, users can:
 
-Filter tasks by status (todo, done)
-Filter tasks by priority (from and to values)
-Perform a full-text search on task titles
-Sort tasks by creation time, completion time, or priority
+Filter tasks by status (todo, done),
+Filter tasks by priority (from and to values),
+Perform a full-text search on task titles,
+Sort tasks by creation time, completion time, or priority.
+
 Users are not allowed to:
 
-Modify or delete tasks that do not belong to them
-Delete completed tasks
-Mark a task as completed if it has uncompleted subtasks
+Modify or delete tasks that do not belong to them,
+Delete completed tasks,
+Mark a task as completed if it has uncompleted subtasks.
 
-Minimum Requirements
-PHP 8.0
+Minimum Requirements:
+
+PHP 8.0 ,
 Framework
 Laravel / Symfony
-Project Name
-Project Name: todo_list_api
-Project Goal: See project description for details
-Getting Started
+
+
+Getting Started:
+
 Follow these steps to set up the project locally:
 
 1. Clone the repository:  git clone https://github.com/AnKrash/todo_list_api.git
